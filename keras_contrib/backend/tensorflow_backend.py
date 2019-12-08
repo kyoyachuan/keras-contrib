@@ -162,7 +162,7 @@ def depth_to_space(input, scale, data_format=None):
 def moments(x, axes, shift=None, keep_dims=False):
     ''' Wrapper over tensorflow backend call '''
 
-    return tf.nn.moments(x, axes, shift=shift, keep_dims=keep_dims)
+    return tf.nn.moments(x, axes, shift=shift, keepdims=keep_dims)
 
 
 def clip(x, min_value, max_value):
