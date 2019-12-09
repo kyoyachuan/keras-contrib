@@ -242,7 +242,7 @@ class BatchRenormalization(Layer):
         shape = (dim,)
 
         if self.scale:
-            self.gamma = self.add_weight(shape,
+            self.gamma = self.add_weight(shape=shape,
                                          initializer=self.gamma_initializer,
                                          regularizer=self.gamma_regularizer,
                                          constraint=self.gamma_constraint,
@@ -251,7 +251,7 @@ class BatchRenormalization(Layer):
             self.gamma = None
 
         if self.center:
-            self.beta = self.add_weight(shape,
+            self.beta = self.add_weight(shape=shape,
                                         initializer=self.beta_initializer,
                                         regularizer=self.beta_regularizer,
                                         constraint=self.beta_constraint,
@@ -259,19 +259,19 @@ class BatchRenormalization(Layer):
         else:
             self.beta = None
 
-        self.running_mean = self.add_weight(shape, initializer=self.moving_mean_initializer,
+        self.running_mean = self.add_weight(shape=shape, initializer=self.moving_mean_initializer,
                                             name='running_mean',
                                             trainable=False)
 
-        self.running_variance = self.add_weight(shape, initializer=self.moving_variance_initializer,
+        self.running_variance = self.add_weight(shape=shape, initializer=self.moving_variance_initializer,
                                                 name='running_std',
                                                 trainable=False)
 
-        self.r_max = K.variable(1, name='r_max')
+        self.r_max = K.variable(value=1, name='r_max')
 
-        self.d_max = K.variable(0, name='d_max')
+        self.d_max = K.variable(value=0, name='d_max')
 
-        self.t = K.variable(0, name='t')
+        self.t = K.variable(value=0, name='t')
 
         self.t_delta_tensor = K.constant(self.t_delta)
 
