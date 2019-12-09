@@ -1,11 +1,12 @@
 """Utilities related to Keras unit tests."""
+import sys
 import numpy as np
 from numpy.testing import assert_allclose
 import inspect
-import six
 
-from keras.engine import Model, Input
-from keras.models import Sequential
+import keras
+from keras.layers import Input
+from keras.models import Model
 from keras import backend as K
 
 
@@ -39,9 +40,12 @@ def get_test_data(num_train=1000, num_test=500, input_shape=(10,),
 
 def layer_test(layer_cls, kwargs={}, input_shape=None, input_dtype=None,
                input_data=None, expected_output=None,
-               expected_output_dtype=None, fixed_batch_size=False, tolerance=1e-3):
+               expected_output_dtype=None, fixed_batch_size=False):
     """Test routine for a layer with a single input tensor
     and single output tensor.
+
+    Copy of the function in keras-team/keras because it's not in the public API.
+    If we use the one from keras-team/keras it won't work with tf.keras.
     """
     # generate input data
     if input_data is None:
@@ -69,10 +73,7 @@ def layer_test(layer_cls, kwargs={}, input_shape=None, input_dtype=None,
     weights = layer.get_weights()
     layer.set_weights(weights)
 
-    # test and instantiation from weights
-    if 'weights' in inspect.getargspec(layer_cls.__init__):
-        kwargs['weights'] = weights
-        layer = layer_cls(**kwargs)
+    expected_output_shape = layer.compute_output_shape(input_shape)
 
     # test in functional API
     if fixed_batch_size:
@@ -82,81 +83,123 @@ def layer_test(layer_cls, kwargs={}, input_shape=None, input_dtype=None,
     y = layer(x)
     assert K.dtype(y) == expected_output_dtype
 
-    # check shape inference
+    # check with the functional API
     model = Model(x, y)
-    expected_output_shape = layer.compute_output_shape(input_shape)
+
     actual_output = model.predict(input_data)
     actual_output_shape = actual_output.shape
     for expected_dim, actual_dim in zip(expected_output_shape,
                                         actual_output_shape):
         if expected_dim is not None:
             assert expected_dim == actual_dim
+
     if expected_output is not None:
-        if tolerance is not None:
-            assert_allclose(actual_output, expected_output, rtol=tolerance)
+        assert_allclose(actual_output, expected_output, rtol=1e-3)
 
     # test serialization, weight setting at model level
     model_config = model.get_config()
-    recovered_model = Model.from_config(model_config)
+    custom_objects = {layer.__class__.__name__: layer.__class__}
+    recovered_model = model.__class__.from_config(model_config, custom_objects)
     if model.weights:
         weights = model.get_weights()
         recovered_model.set_weights(weights)
         _output = recovered_model.predict(input_data)
-        if tolerance is not None:
-            assert_allclose(_output, actual_output, rtol=tolerance)
+        assert_allclose(_output, actual_output, rtol=1e-3)
 
-    # test training mode (e.g. useful for dropout tests)
-    model.compile('rmsprop', 'mse')
-    model.train_on_batch(input_data, actual_output)
+    # test training mode (e.g. useful when the layer has a
+    # different behavior at training and testing time).
+    if has_arg(layer.call, 'training'):
+        model.compile('rmsprop', 'mse')
+        model.train_on_batch(input_data, actual_output)
 
-    # test as first layer in Sequential API
+    # test instantiation from layer config
     layer_config = layer.get_config()
     layer_config['batch_input_shape'] = input_shape
     layer = layer.__class__.from_config(layer_config)
-
-    model = Sequential()
-    model.add(layer)
-    actual_output = model.predict(input_data)
-    actual_output_shape = actual_output.shape
-    for expected_dim, actual_dim in zip(expected_output_shape,
-                                        actual_output_shape):
-        if expected_dim is not None:
-            assert expected_dim == actual_dim
-    if expected_output is not None:
-        if tolerance is not None:
-            assert_allclose(actual_output, expected_output, rtol=1e-3)
-
-    # test serialization, weight setting at model level
-    model_config = model.get_config()
-    recovered_model = Sequential.from_config(model_config)
-    if model.weights:
-        weights = model.get_weights()
-        recovered_model.set_weights(weights)
-        _output = recovered_model.predict(input_data)
-        if tolerance is not None:
-            assert_allclose(_output, actual_output, rtol=1e-3)
-
-    # test training mode (e.g. useful for dropout tests)
-    model.compile('rmsprop', 'mse')
-    model.train_on_batch(input_data, actual_output)
 
     # for further checks in the caller function
     return actual_output
 
 
-def keras_test(func):
-    """Function wrapper to clean up after TensorFlow tests.
+def has_arg(fn, name, accept_all=False):
+    """Checks if a callable accepts a given keyword argument.
+
+    For Python 2, checks if there is an argument with the given name.
+
+    For Python 3, checks if there is an argument with the given name, and
+    also whether this argument can be called with a keyword (i.e. if it is
+    not a positional-only argument).
+
+    This function is a copy of the one in keras-team/keras because it's not
+    in the public API.
 
     # Arguments
-        func: test function to clean up after.
+        fn: Callable to inspect.
+        name: Check if `fn` can be called with `name` as a keyword argument.
+        accept_all: What to return if there is no parameter called `name`
+                    but the function accepts a `**kwargs` argument.
 
     # Returns
-        A function wrapping the input function.
+        bool, whether `fn` accepts a `name` keyword argument.
     """
-    @six.wraps(func)
-    def wrapper(*args, **kwargs):
-        output = func(*args, **kwargs)
-        if K.backend() == 'tensorflow':
-            K.clear_session()
-        return output
-    return wrapper
+    if sys.version_info < (3,):
+        arg_spec = inspect.getargspec(fn)
+        if accept_all and arg_spec.keywords is not None:
+            return True
+        return name in arg_spec.args
+    elif sys.version_info < (3, 3):
+        arg_spec = inspect.getfullargspec(fn)
+        if accept_all and arg_spec.varkw is not None:
+            return True
+        return (name in arg_spec.args or
+                name in arg_spec.kwonlyargs)
+    else:
+        signature = inspect.signature(fn)
+        parameter = signature.parameters.get(name)
+        if parameter is None:
+            if accept_all:
+                for param in signature.parameters.values():
+                    if param.kind == inspect.Parameter.VAR_KEYWORD:
+                        return True
+            return False
+        return (parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                   inspect.Parameter.KEYWORD_ONLY))
+
+
+def to_list(x, allow_tuple=False):
+    if isinstance(x, list):
+        return x
+    if allow_tuple and isinstance(x, tuple):
+        return list(x)
+    return [x]
+
+
+def unpack_singleton(x):
+    if len(x) == 1:
+        return x[0]
+    return x
+
+
+if keras.__name__ == 'keras':
+    is_tf_keras = False
+elif keras.__name__ == 'tensorflow.keras':
+    is_tf_keras = True
+else:
+    raise KeyError('Cannot detect if using keras or tf.keras.')
+
+
+def to_tuple(shape):
+    """This functions is here to fix an inconsistency between keras and tf.keras.
+
+    In tf.keras, the input_shape argument is an tuple with `Dimensions` objects.
+    In keras, the input_shape is a simple tuple of ints or `None`.
+
+    We'll work with tuples of ints or `None` to be consistent
+    with keras-team/keras. So we must apply this function to
+    all input_shapes of the build methods in custom layers.
+    """
+    if is_tf_keras:
+        import tensorflow as tf
+        return tuple(tf.TensorShape(shape).as_list())
+    else:
+        return shape

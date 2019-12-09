@@ -6,10 +6,17 @@ This library is the official extension repository for the python deep learning l
 
 As the community contributions in Keras-Contrib are tested, used, validated, and their utility proven, they may be integrated into the Keras core repository. In the interest of keeping Keras succinct, clean, and powerfully simple, only the most useful contributions make it into Keras. This contribution repository is both the proving ground for new functionality, and the archive for functionality that (while useful) may not fit well into the Keras paradigm.
 
+
+## The future of Keras-contrib:
+
+We're migrating to tensorflow/addons. See the announcement [here](https://github.com/keras-team/keras-contrib/issues/519). 
+
 ---
 ## Installation
 
-For instructions on how to install Keras, see https://keras.io/#installation
+#### Install keras_contrib for keras-team/keras
+For instructions on how to install Keras, 
+see [the Keras installation page](https://keras.io/#installation).
 
 ```shell
 git clone https://www.github.com/keras-team/keras-contrib.git
@@ -23,7 +30,26 @@ Alternatively, using pip:
 sudo pip install git+https://www.github.com/keras-team/keras-contrib.git
 ```
 
-For contributor guidelines see [CONTRIBUTING.md](CONTRIBUTING.md)
+to uninstall:
+```pip
+pip uninstall keras_contrib
+```
+
+#### Install keras_contrib for tensorflow.keras
+
+```shell
+git clone https://www.github.com/keras-team/keras-contrib.git
+cd keras-contrib
+python convert_to_tf_keras.py
+USE_TF_KERAS=1 python setup.py install
+```
+
+to uninstall:
+```shell
+pip uninstall tf_keras_contrib
+```
+
+For contributor guidelines see [CONTRIBUTING.md](https://github.com/keras-team/keras-contrib/blob/master/CONTRIBUTING.md)
 
 ---
 ## Example Usage
@@ -51,13 +77,7 @@ model.fit(x=np.random.random((100, 10)), y=np.random.random((100, 100)), epochs=
 # Save our model
 model.save('example.h5')
 ```
-```python
-from keras.models import load_model
-from keras_contrib.layers.advanced_activations import PELU
 
-# Load our model
-model = load_model('example.h5')
-```
 
 ### A Common "Gotcha"
 
@@ -68,11 +88,10 @@ As Keras-Contrib is external to the Keras core, loading a model requires a bit m
 from keras.models import load_model
 
 # Recommended method; requires knowledge of the underlying architecture of the model
-from keras_contrib.layers.advanced_activations import PELU
-
-# Not recommended; however this will correctly find the necessary contrib modules
-from keras_contrib import *
+from keras_contrib.layers import PELU
+from keras_contrib.layers import GroupNormalization
 
 # Load our model
-model = load_model('example.h5')
+custom_objects = {'PELU': PELU, 'GroupNormalization': GroupNormalization}
+model = load_model('example.h5', custom_objects)
 ```

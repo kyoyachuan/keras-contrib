@@ -97,3 +97,12 @@ ENV/
 .idea
 
 *.DS_Store
+
+contrib_docs/site/*
+contrib_docs/sources/*
+contrib_docs/theme/fonts/*
+contrib_docs/theme/img/*
+
+.pytest_cache/*
+
+contrib_docs/_build/
